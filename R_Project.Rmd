@@ -1,0 +1,380 @@
+---
+title: "Final R Project"
+author: "36-350 -- Statistical Computing"
+date: "Week 11 -- Spring 2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+  pdf_document:
+    toc: no
+---
+
+Name: Clytze Sun
+
+Andrew ID: puxins
+
+This project is to be begun in class, but may be finished outside of class at any time prior to Friday, April 3<sup>rd</sup> at 6:00 PM. You must submit **your own** lab as a knitted PDF file on Gradescope.
+
+There are 200 points possible for this assignment.
+
+<hr>
+
+The dataset that you will examine has been provided by the CMU Libraries. It contains a listing of items (usually books, but not always, hence my use of the term "items") loaned out by the various libraries over a period of time.
+
+The dataset, available on Canvas in the `FILES` hierarchy, is `20200225_print-circulation_sample.csv`. The only thing I will say about the contents now is that some of the columns are best treated as factors and some as strings (that subsequently might need to be converted to other data types), so you should examine the data and try your best to preprocess all the input columns correctly. (Note: this process may be iterative, i.e., you might determine later that you need to alter how you process the input. That's fine. That's *normal* in the real world.)
+
+**To be clear**: there is generally no unique way of going about answering each question below. For instance, you may want to use base `R` sometimes, and `tidyverse` functions at other times. In the end, *I don't particularly care how you go about answering the questions, so long as you answer them correctly*. (Some of you may very well create more elegant solutions than what I have in the solution set. And that's good. Others will create coding monstrosities...but that's OK, as my attitude is that your coding will improve with practice. One cannot expect to leave a semester-long class with the same comfort level coding `R` as I have built up over 15 years of nearly continuous coding...)
+
+<hr>
+
+```{r wrap-hook,echo=FALSE}
+library(knitr)
+hook_output = knit_hooks$get('output')
+knit_hooks$set(output = function(x, options) {
+  # this hook is used only when the linewidth option is not NULL
+  if (!is.null(n <- options$linewidth)) {
+    x = knitr:::split_lines(x)
+    # any lines wider than n should be wrapped
+    if (any(nchar(x) > n)) x = strwrap(x, width = n)
+    x = paste(x, collapse = '\n')
+  }
+  hook_output(x, options)
+})
+library(dplyr)
+library(magrittr)
+```
+
+## Question 1
+*(10 points)*
+
+Download the data file and read it into `R`. As stated above, how you go about doing that is up to you. Treat dates (including years!) and times as characters for now. One hint: if you use the `tidyverse`, then what you read in will be in `tibble` format. You may want to convert your data to a data frame format to avoid headaches later. However, if you are comfortable with tibbles, then keep the data in `tibble` format.
+```{r linewidth=80}
+getwd()
+df=read.csv("20200225_print-circulation_sample.csv",header=TRUE)
+
+df$Loan.Date=as.Date(df$Loan.Date,format="%m/%d/%y")
+df$Return.Date=as.Date(df$Return.Date,format="%m/%d/%y")
+df$Begin.Publication.Date=as.Date(df$Begin.Publication.Date,format="%Y")
+df$Patron.Group=as.character(df$Patron.Group)
+df$Title=as.character(df$Title)
+df$Material.Type=as.character(df$Material.Type)
+df$Publisher=as.character(df$Publisher)
+df$Subjects=as.character(df$Subjects)
+df$Library.Code=as.character(df$Library.Code)
+df$LC.Classification.Top.Line.1=as.character(df$LC.Classification.Top.Line.1)
+
+sapply(df,mode)
+head(df,30)
+```
+
+## Question 2
+*(10 points)*
+
+Not all of the columns are useful. First, use `summary()` or a similar function to determine if any columns are wholly uninformative. If any are, eliminate them. Then check for redundancy: if any column is redundant, eliminate it as well. Display the dimension of your data frame when you are finished with this first round of processing.
+```{r linewidth=80}
+summary(df)
+df <- subset(df, select = -c(1,2))
+dim(df)
+df[3,1]
+```
+
+## Question 3
+*(10 points)*
+
+What is the range of times over which items were loaned out in this data sample? Display the date and time of the first loan, the last loan, and the difference in time between them, in days. This involves concatenating the contents of two columns and converting the concatenated quantity to something you can use. You need not add the concatenated quantity to the data frame; just use it to answer the initial question. Assume all times are local time for CMU (even if the loan occurred in, e.g., Qatar). Hint: you might want to process the dates before concatenation, particularly because some of the dates are from the 1900's (so a one-size-fits-all substitution of, e.g., "20" in the year field will not work for all the data). Note that I found a time difference of 9019.486 days.
+```{r linewidth=80}
+
+fullDate=paste(df$Loan.Date,df$Loan.Time)
+fullDate=as.POSIXlt(fullDate,format="%Y-%m-%d %H:%M:%S",tz="GMT")
+ReturnDate=as.POSIXct(df$Return.Date)
+timeDiff=(ReturnDate-fullDate)/60/60/24
+9019.486 %in% timeDiff
+
+```
+
+## Question 4
+*(10 points)*
+
+Using your loan date and time from Q3 and the date from the `Return Date` column, create a histogram showing the length of time that items are loaned out, in *days*. (Limit your histogram to x-axis values 0 to 1000, and define the breaks to be every 10 days. Label the x-axis "Loan Duration (Days)". If using base `R`, set `main=NULL`. Color is up to you.) Don't worry about the fact that there is only a return date, and not a return time. Ignore items that had yet to be returned at the time the dataset was created (check for empty strings!), and note that the number of days will not be an integer, because you are incorporating the loan time. Filter out any data where the item was returned before it was loaned out(!). Note: no item was returned during the 1990s; this simplifies processing.
+```{r linewidth=80}
+timeDiff=na.omit(as.numeric(timeDiff))
+timeDiff=timeDiff[timeDiff>0] #filter out item that was returned before it was loaned out
+hist(timeDiff,xlim=(c(0,1000)),breaks=1000,xlab="Loan Duration (Days)",main=NULL)
+```
+
+## Question 5
+*(10 points)*
+
+The data displayed in your histogram in Q4 appear, at first glance, to be exponentially distributed, at least approximately. Fit an exponential distribution to these data using an appropriate optimizer. (You need not include the gradient here.) Display the optimized value of the `rate` parameter. Redisplay your histogram from Q4 with the optimized exponential pdf superimposed. (If you cannot see it: are you creating a frequency histogram, or a density histogram?) Don't expect the model to be a "good" one. Hint: if you have a hard time finding the optimum value, try plotting a few times with lines superimposed with different values of the `rate` parameter. This will help build your intuition.
+```{r linewidth=80}
+library("MASS")
+my.data=timeDiff[timeDiff<1000] 
+
+fit=fitdistr(my.data, "exponential")
+my.rate=fit$estimate
+my.rate
+hist(my.data, pch=20, breaks=100, prob=TRUE, main="")
+curve(dexp(x, my.rate), col="red", lwd=2, add=T)
+
+
+```
+
+## Question 6
+*(10 points)*
+
+Estimate the uncertainty for the `rate` parameter via bootstrapping. Display a histogram showing the estimated values of `rate` and display the 2.5% and 97.5% quantiles. You have a lot of data, so the difference between quantiles should be small.
+```{r linewidth=80}
+#install.packages("fitdistrplus")
+library("fitdistrplus")
+suppressWarnings(fit<-fitdist(my.data, "exp"))
+suppressWarnings(ests<-bootdist(fit, niter = 1e3))
+summary(ests)
+```
+
+## Question 7
+*(10 points)*
+
+Using *inverse-transform sampling*, sample 100 data from the optimal exponential distribution. Note: `R` defines the exponential distribution to be $f(x) = re^{-rx}$, where $r$ is the `rate` parameter. Display a histogram of your sampled data, and overlay the optimal exponential distribution, like you did in Q5.
+```{r linewidth=80}
+u = runif(100)
+x = -log(1-u)/my.rate
+hist(x, probability=TRUE, xlim=c(0,1000), breaks=25)
+curve(dexp(x, my.rate), col="lightblue", lwd=3, add=T)
+```
+
+## Question 8
+*(10 points)*
+
+Determine the average length in days for a loan for each group of Carnegie Mellon-affiliated patrons, by which we mean each element of the `Patron Group` column that begins with "Carnegie Mellon". (There are five in all.) To be clear: you are to approach this as a "split-apply-combine" problem, as opposed to extracting information for each group separately one after the other. A few notes here that might be helpful: (1) you have to initially filter the `Patron Group` column *in the exact same manner* that you filtered the loan dates in Q4, so that each element of the filtered `Patron Group` column matches 1-to-1 with a loan duration; (2) after this, you filter the patron group and loan duration vectors *again*, to limit yourself to CMU-affiliated patrons; and (3) if `pg` is your filtered patron group vector, do `pg = droplevels(pg)` so that the other non-CMU-related factor levels are dropped (otherwise you'll get output for *all* patron groups, with most displaying `NA` for the average loan duration). You can apply either base `R` or `tidyverse` functions to compute your answers. Note that I personally get 184.16142 for CMU faculty: we keep items for six months on average.
+```{r linewidth=80}
+#df <- read.csv("20200225_print-circulation_sample.csv", header=TRUE, stringsAsFactors=FALSE) #reload because altered before
+#df$loan.d <- as.Date(df$Loan.Date, format="%m/%d/%y")
+#df$return.d <- as.Date(df$Return.Date, format="%m/%d/%y")
+diff=df$Return.Date-df$Loan.Date
+df$duration=as.numeric(diff)
+groups=df %>% group_by(Patron.Group) %>%summarize(mean.duration=mean(duration, na.rm=T))
+groups=droplevels(groups)
+groups
+```
+
+## Question 9
+*(10 points)*
+
+How many items were loaned on average on each day of the week in 2018? In other words, how many loans were made on average on Mondays, and on average on Tuesdays, etc.? In Q3, you created a vector of dates and times for all loans. Subset this vector to include only loans during 2018, and then determine the day associated with each date/time. To force the days to be in order, cast the vector of day names to a factor variable, and explicitly set the levels of that variable to "Monday", "Tuesday", etc. Last thing to remember: most days occur 52 times during a year, but one occurred 53 times in 2018. This will affect your computation of the mean! Note: I found an average of 23.09615 loans on each Saturday of 2018.
+```{r linewidth=80}
+df.18=subset(df,format(Loan.Date, "%Y")==2018)
+df.18=df.18%>%mutate("Weekday"=weekdays(Loan.Date)) 
+tbl=table(df.18$Weekday)
+
+df.freq=data.frame(tbl["Sunday"]/52, tbl["Monday"]/53, tbl["Tuesday"]/53, 
+                      tbl["Wednesday"]/52, tbl["Thursday"]/52, tbl["Friday"]/52, 
+                      tbl["Saturday"]/52)
+
+names(df.freq)=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", 
+                    "Friday", "Saturday")
+
+row.names(df.freq)="Frequency"
+
+df.freq
+```
+
+## Question 10
+*(10 points)*
+
+Create a time series for the loans in 2018, and then plot both the time series and its periodogram. Note that you should cast your date-and-time vector that you created in Q9 to `Date`, then use `table()` to determine the number of loans per date. You will probably have to look back at HW 10 (Q2, in particular) to recall how to define a time series for daily data. Finally: after you create your periodogram, determine the two most dominant frequencies and interpret them below.
+```{r linewidth=80}
+loans18.date <- as.Date(df.18$Loan.Date, format="%m/%d/%y")
+loans18.date <- sort(loans18.date)
+loans18.freq <- as.numeric(table(loans18.date))
+loans18.ts <- ts(loans18.freq, start=c(2018, 1), frequency=365)
+plot(loans18.ts)
+pgram <- spectrum(loans18.ts, log="no")
+pgram$freq
+```
+```
+As observed, the two highest frequencies are 182.5 and 181.4 with associated spec value of 0.103 and 4.285. 
+```
+
+## Question 11
+*(10 points)*
+
+Create a function that takes in a date (as a character string), converts it to `Date` format, and returns how many loans were made on that date. A few notes: (1) you will also need to pass in your vector of dates-and-times from Q3, as cast to `Date`, because you are going to determine how many times your test date appears in that vector of dates; (2) you will also have the date format as an argument, with a default value of "%Y-%m-%d", because your function should allow the user to express the date in different formats; and (3) you will utilize `tryCatch()` with an `error` argument (where the error message should be "ERROR: bad date format."), so that if the input date cannot be converted to `Date` format and thus gets converted to `NA`, your code can clean things up without the code chunk itself failing. Note that inside `tryCatch()`, you should check if the converted date is `NA` and if it is, then you should issue a `stop()` function call (which will then trigger your error message to be displayed.) Note that for April 18, 2019, I find that 73 items were loaned. (Test your function with "4/18/2019" to see if you get this total.) Important: do not test your function with, or correct for, input that includes a two-digit year. This keeps things simpler. In a real-world code, you'd need to do that, but you need not do that here.
+```{r linewidth=80}
+Date=table(df$Loan.Date)
+f=function(d, data){
+  formats=c("%m/%d/%Y","%Y-%m-%d","%d/%m/%Y")
+  isConvertable=NA
+  for (i in 1:length(formats)){
+    if (is.na(isConvertable)){
+      isConvertable=as.character(as.Date(d,format=formats[i]))
+    }
+  }
+  tryCatch(
+    if(is.na(isConvertable)){stop()},
+    error=function(c)"Wrong format for date, follow the format: year-month-day",
+    finally=cat("there were",data[isConvertable],"books loaned out on that day.")
+  )
+}
+f("4/18/2019",Date)
+```
+
+## Question 12
+*(10 points)*
+
+Which library has older items? Hunt Library (library code `HUNT`) or Sorrells (library code `ENGR-SCI`)? And are the items in one library older in a statistically significant sense? You should only work with years in the `Begin Publication Date` field that are complete (four numerical digits, as opposed to 19??). Use a split-apply-combine function to display the mean publication date for items in each of the two indicated libraries (and those two only...note, use `droplevels()` similarly to the way you used it in Q8, to limit output to those two libraries). Also show the sample standard deviations. Then create two vectors$-$publication dates for Hunt, and publications dates for Sorrells$-$and perform a two-sample t-test. (Google how to do this if it is not obvious how to do so right away.) If the null hypothesis is that both samples are drawn from the same population of publication dates, do you reject the null, or fail to reject the null?
+```{r linewidth=80}
+df=read.csv("20200225_print-circulation_sample.csv", header=TRUE, stringsAsFactors=FALSE) #reload
+
+df.new=df[with(df,df$Language.Code=="eng"),]
+df.lib.pub=data.frame(df$Library.Code,df$Begin.Publication.Date)
+df.filtered=df %>% filter(.,(Library.Code == "HUNT" | Library.Code == "ENGR-SCI"))
+df.filtered=droplevels(df.filtered)
+df.new=df.filtered%>% filter(.,(!is.na(Begin.Publication.Date) & Begin.Publication.Date != "")) 
+df.new$Begin.Publication.Date = as.numeric(df.new$Begin.Publication.Date)
+
+mean.sd = function(x){
+  return (c("Mean" = mean(x, na.rm = TRUE),
+            "SD" = sd(x, na.rm = TRUE)))
+}
+
+yearly.sd = tapply(df.new$Begin.Publication.Date, 
+                     INDEX = df.new$Library.Code, 
+                     FUN = mean.sd )
+yearly.sd
+hunt.result = (df.new %>% filter(.,(Library.Code == "HUNT")))$Begin.Publication.Date
+
+sorrells.result = (df.new %>% filter(.,(Library.Code == "ENGR-SCI")))$Begin.Publication.Date
+
+ks.test(hunt.result, sorrells.result)
+
+
+
+```
+```
+The p is less than our significance level, we reject the null hypothesis.
+```
+
+## Question 13
+*(10 points)*
+
+Which top-level Library of Congress classification codes appear the most at Hunt and Sorrells? By "top-level," I mean the first capital letter in each code, which maps to a particular subject area. For instance, if the first letter is "B", the item is a work of philosophy, psychology, or religion. Only include elements in the `LC Classification Top Line` column that *begin* with a capital letter and which are not listed as "Unknown". Output the top three first letters for each library (e.g., you might find that R, S, and T appear the most for a given library, in that order). Look up Library of Congress classification via Google and identify what each of the letters in your output stands for. (Note that I found that "N" appears 5009 times for items loaned from Hunt Library. Use this as a check of your output.) Hint: if Military Science appears a lot in your final answer, it means you didn't filter out the "Unknown"s. ("U" is the Military Science LoC classification code.)
+```{r linewidth=80}
+
+hunt.class=df$LC.Classification.Top.Line[df$Library.Code=="HUNT"]
+hunt.letter=substring(hunt.class,1,1)
+huntdf=data.frame(hunt.class,hunt.letter)
+huntdf=huntdf[huntdf$hunt.class!="Unknown",]
+hunttbl=table(huntdf$hunt.letter)
+head(hunttbl[order(-hunttbl)],3)
+length(hunt.class)
+
+sorrells.class=df$LC.Classification.Top.Line[df$Library.Code=="ENGR-SCI"]
+sorrells.letter=substring(sorrells.class,1,1)
+sdf=data.frame(sorrells.class,sorrells.letter)
+sdf=sdf[sdf$sorrells.class!="Unknown",]
+stbl=table(sdf$sorrells.letter)
+head(stbl[order(-stbl)],3)
+
+
+
+```
+```
+P is the most frequent starting letter.
+```
+
+## Question 14
+*(10 points)*
+
+What words appear most commonly in the titles of loaned items? To determine this, you should do the following: (1) limit yourself to items with a language code of "eng"; (2) only deal with lower-case letters (meaning, convert all letters to lower case); (3) replace all instances of "'s" (i.e., apostrophe s) and punctuation with empty strings (e.g., `gsub()`); and (4) concatenate all the words into a single vector (while removing any empty strings that make it into that vector). But seeing that "and" and "the" appear most often is boring. So use the `data_stopwords_smart$en` vector from the `stopwords` package to identify words which you should not include in your final table of the ten most common words. To be clear: if it is a stop word, it should not appear in your final table! (Hint: see `match()` or `%in%` to figure out how to identify which words are stop words and which are not.) (Note: I see that the word "theory" appeared in item titles 1667 times.)
+```{r linewidth=80}
+if ( require(stopwords) == FALSE ) {
+  install.packages("stopwords",repos="https://cloud.r-project.org")
+  library(stopwords)
+}
+library(stringr)
+dft=df$Title[df$Language.Code=="eng"]
+dft=tolower(dft)
+dft=gsub("[[:punct:]]|'s","",dft)
+dft=paste(dft,collapse="")
+v=str_split(dft," ")
+v=unlist(v)[unlist(v)!=""]
+v=unlist(v)[!unlist(v) %in% data_stopwords_smart$en]
+
+head(sort(table(v),decreasing=T),10)
+```
+
+## Question 15
+*(10 points)*
+
+Display how many records are either `NA` or empty strings in each column. Note that you should not have a combination of each, i.e., there should be no columns in your data frame that have *both* `NA`s and empty strings in them. This simplifies coding. Note that I find that there's no publication date for 2340 items.
+```{r linewidth=80}
+df.15 <- df %>% mutate_all(as.character)
+allmisscols <- sapply(df.15, function(x) sum(is.na(x) | x == '' ))
+allmisscols
+```
+
+## Question 16
+*(10 points)*
+
+Display a bar chart via `ggplot()` that shows how many items were published by each of the top eight publishers of items in the dataset. Note that you should limit yourself to items with language code "eng", and you should eliminate any empty strings from the publisher vector before counting up how many items each publisher published. Your plot need not show the publishers in order of decreasing number of publications; by default it should show bars in publisher alphabetical order (with "Cambridge University Press" coming first). Pick a good color for your bars. Note: for reasons not entirely clear to me, you should pass the argument `stat="identity"` to `geom_bar()` in order for the plot to display correctly.
+```{r linewidth=80}
+library(tidyverse)
+df=read.csv("20200225_print-circulation_sample.csv", header=TRUE, stringsAsFactors=FALSE) #reload
+df.new=df[with(df,df$Language.Code=="eng"),]
+df.new.complete=df.new[!(!is.na(df.new$Publisher) & df.new$Publisher==""), ] #complete cases only 
+df.new.freq=data.frame(sort(table(df.new$Publisher),decreasing=TRUE))
+df.new.freq=head(df.new.freq, n=8)
+df.new.freq
+ggplot(data=df.new.freq) + geom_bar(aes(x=Var1, y=Freq, fill=Var1), stat="identity")
+```
+
+## Question 17
+*(10 points)*
+
+Each item in the dataset is associated with some number of subjects. In the subject field, the subjects are separated by semi-colons (;). Utilize `strsplit()` and `sapply()` to determine the number of subjects associated with each item. Then plot the number of occurrences of each number of subjects. (For instance, 1098 items may have 4 subjects, while 780 have 5...plot with 4 and 5 along the x-axis, the 1098 and 780 along the y-axis.) Do not include the data point for no subjects. You should convert the y-axis to logarithmic scale; once you do so, you should see a roughly linear trend.
+```{r linewidth=80}
+subject.count <- sapply(strsplit(df$Subjects, ";"), length)
+sub.df <- data.frame(table(subject.count))
+sub.df
+plot(sub.df$subject.count, sub.df$Freq, log="y")
+```
+
+## Question 18
+*(10 points)*
+
+Construct a histogram showing the distribution of the numerical components of each library classification code record. For instance, if the library classification code is "AZ874.5", then you need to extract the 874.5 and save it to a vector; once all extractions are done, histogram the vector. You should begin by filtering the data so as to retain only those classification codes that begin with a capital letter, then use tools of pattern matching to extract the numbers. If, when you make the histogram, you get the warning message "NAs introduced by coercion," it means that the vector of numbers has `NA`s in it (because you tried to coerce an empty string to a number, etc.)...go back and introduce code that forcibly removes the `NA`s from the vector.
+```{r linewidth=80}
+library(stringr)
+numextract <- function(string){ 
+  str_extract(string, "\\-*\\d+\\.*\\d*")
+} 
+lib.code <- sapply(df$LC.Classification.Top.Line, numextract) #get the nums
+lib.code <- data.frame(lib.code) #make into df
+lib.code <- sapply(lib.code, function(x) x[!(is.na(x) | x == '')] ) #remove na
+lib.code <- sapply(lib.code, as.numeric) #convert to numeric
+hist(lib.code)
+```
+
+## Question 19
+*(10 points)*
+
+How many complete cases are there in your dataset? A "complete case" is a row for which all the fields have data. An incomplete case is a row in which there is an `NA` or an empty string. (Don't worry about cases like the classification code being "Unknown": just check for `NA`s and empty strings.) I find 32,345 complete cases.
+```{r linewidth=80}
+df.19=df[complete.cases(df),]#remove NAs
+pat="^[[:space:]]*$"
+matches=data.frame(lapply(df.19,function(x)grepl(pat,x)))
+df.19=df.19[!apply(matches,1,any),]#remove empty strings
+dim(df.19)
+```
+
+## Question 20
+*(10 points)*
+
+Edit your file `dark_and_stormy.R` in your 36-350 `Git` repo so that it prints "It was a dark and stormy night so I stayed in to complete my R project. (Helped me avoid Covid-19 too.)" Then push your change to `GitHub` and use `source_url()` from the `devtools` package to run the code in the chunk below.
+```{r linewidth=80}
+library(devtools)
+source_url("https://raw.githubusercontent.com/ClySun/36350/master/dark_and_stormy.R")
+```
+And with that, you're done.
